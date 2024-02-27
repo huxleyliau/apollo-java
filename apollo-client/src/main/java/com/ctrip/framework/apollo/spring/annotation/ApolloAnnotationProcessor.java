@@ -29,7 +29,6 @@ import com.ctrip.framework.apollo.spring.util.SpringInjector;
 import com.ctrip.framework.apollo.util.ConfigUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.Sets;
 import com.google.gson.Gson;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -62,9 +61,9 @@ public class ApolloAnnotationProcessor extends ApolloProcessor implements BeanFa
 
   private static final Logger logger = LoggerFactory.getLogger(ApolloAnnotationProcessor.class);
 
-  private static final String NAMESPACE_DELIMITER = ",";
+  private static final String PROPERTY_DELIMITER = ",";
 
-  private static final Splitter NAMESPACE_SPLITTER = Splitter.on(NAMESPACE_DELIMITER)
+  private static final Splitter PROPERTY_SPLITTER = Splitter.on(PROPERTY_DELIMITER)
       .omitEmptyStrings().trimResults();
   private static final Map<String, Gson> DATEPATTERN_GSON_MAP = new ConcurrentHashMap<>();
 
@@ -134,46 +133,38 @@ public class ApolloAnnotationProcessor extends ApolloProcessor implements BeanFa
     String[] annotatedInterestedKeyPrefixes = annotation.interestedKeyPrefixes();
     ConfigChangeListener configChangeListener = changeEvent -> ReflectionUtils.invokeMethod(method, bean, changeEvent);
 
-    Set<String> interestedKeys =
-        annotatedInterestedKeys.length > 0 ? Sets.newHashSet(annotatedInterestedKeys) : null;
-    Set<String> interestedKeyPrefixes =
-        annotatedInterestedKeyPrefixes.length > 0 ? Sets.newHashSet(annotatedInterestedKeyPrefixes)
-            : null;
 
-    Set<String> resolvedNamespaces = processResolveNamespaceValue(namespaces);
+    Set<String> interestedKeys = processResolveEnvironmentProperty(annotatedInterestedKeys);
+    Set<String> interestedKeyPrefixes = processResolveEnvironmentProperty(annotatedInterestedKeyPrefixes);
+    Set<String> resolvedNamespaces = processResolveEnvironmentProperty(namespaces);
 
     for (String namespace : resolvedNamespaces) {
       Config config = ConfigService.getConfig(namespace);
-
-      if (interestedKeys == null && interestedKeyPrefixes == null) {
-        config.addChangeListener(configChangeListener);
-      } else {
-        config.addChangeListener(configChangeListener, interestedKeys, interestedKeyPrefixes);
-      }
+      config.addChangeListener(configChangeListener, interestedKeys, interestedKeyPrefixes);
     }
   }
 
   /**
-   * Evaluate and resolve namespaces from env/properties.
-   * Split delimited namespaces
-   * @param namespaces
-   * @return resolved namespaces
+   * Evaluate and resolve values from env/properties.
+   * Split delimited values
+   * @param values
+   * @return resolved values
    */
-  private Set<String> processResolveNamespaceValue(String[] namespaces) {
+  private Set<String> processResolveEnvironmentProperty(String[] values) {
 
-    Set<String> resolvedNamespaces = new HashSet<>();
+    Set<String> resolvedEnvironmentProperty = new HashSet<>();
 
-    for (String namespace : namespaces) {
-      final String resolvedNamespace = this.environment.resolveRequiredPlaceholders(namespace);
+    for (String value : values) {
+      final String resolvedProperty = this.environment.resolveRequiredPlaceholders(value);
 
-      if (resolvedNamespace.contains(NAMESPACE_DELIMITER)) {
-        resolvedNamespaces.addAll(NAMESPACE_SPLITTER.splitToList(resolvedNamespace));
+      if (resolvedProperty.contains(PROPERTY_DELIMITER)) {
+        resolvedEnvironmentProperty.addAll(PROPERTY_SPLITTER.splitToList(resolvedProperty));
       } else {
-        resolvedNamespaces.add(resolvedNamespace);
+        resolvedEnvironmentProperty.add(resolvedProperty);
       }
     }
 
-    return resolvedNamespaces;
+    return resolvedEnvironmentProperty;
   }
 
   private void processApolloJsonValue(Object bean, String beanName, Field field) {
